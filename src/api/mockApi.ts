@@ -33,14 +33,12 @@ export async function simulateWorkflow(nodes: any[], edges: any[]) {
     return { success: false, log: [], errors };
   }
 
-  // Find start node
   const startNode = nodes.find(n => n.type === 'start');
   if (!startNode) return { success: false, log: [], errors: ["Missing start node"] };
 
   const visited = new Set<string>();
   const inDegree = new Map<string, number>();
   
-  // Calculate in-degree for all nodes
   nodes.forEach(n => inDegree.set(n.id, 0));
   edges.forEach(e => {
     if (inDegree.has(e.target)) {
@@ -56,21 +54,36 @@ export async function simulateWorkflow(nodes: any[], edges: any[]) {
     visited.add(node.id);
 
     let msg = "";
+    let status: "success" | "pending" | "skipped" = node.type === 'approval' ? 'pending' : 'success';
+    
     switch(node.type) {
-      case 'start': msg = "Workflow initiated"; break;
-      case 'task': msg = `Assigned to ${node.data.assignee || 'Unassigned'}`; break;
-      case 'approval': msg = `Pending approval from ${node.data.approver_role || 'Manager'}`; break;
-      case 'automated': msg = `Executing: ${node.data.action || 'Unknown Action'}`; break;
-      case 'end': msg = `Workflow ended: ${node.data.end_message || ''}`; break;
+      case 'start': 
+        msg = "Workflow initiated"; 
+        break;
+      case 'task': 
+        msg = `Assigned to ${node.data.assignee || 'Unassigned'} — awaiting completion`; 
+        break;
+      case 'approval': 
+        msg = `Sent to ${node.data.approver_role || 'Manager'} for review — auto-approves if score > ${node.data.auto_approve_threshold || 0}`; 
+        break;
+      case 'automated': 
+        const actionLabel = MOCK_AUTOMATIONS.find(a => a.id === node.data.action)?.label || node.data.action || 'Unknown Action';
+        const numParams = Object.keys(node.data.action_params || {}).length;
+        msg = `Executing '${actionLabel}' with ${numParams} parameters`; 
+        break;
+      case 'end': 
+        msg = `${node.data.end_message || 'Workflow complete'}`; 
+        break;
     }
 
     log.push({
       step: step++,
       nodeId: node.id,
+      nodeType: node.type.toUpperCase(),
       label: node.data.title || node.type.toUpperCase(),
-      status: "success",
+      status: status,
       message: msg,
-      type: node.type
+      duration: status === 'pending' ? null : Math.floor(Math.random() * 320) + 80
     });
 
     const outgoingEdges = edges.filter(e => e.source === node.id);

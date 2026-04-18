@@ -9,6 +9,7 @@ import {
   Background,
   Connection,
   Edge,
+  MiniMap,
   NodeTypes as RFNodeTypes,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -19,12 +20,31 @@ import { simulateWorkflow } from './api/mockApi';
 
 export const ValidationContext = React.createContext<{ nodeErrors: Record<string, string[]> }>({ nodeErrors: {} });
 
+const TYPE_COLORS: Record<string, string> = {
+  START: '#10B981',
+  TASK: '#3B82F6',
+  APPROVAL: '#8B5CF6',
+  AUTOMATED: '#E05C00',
+  END: '#EF4444'
+};
+
 const nodeTypes: RFNodeTypes = {
   start: StartNode,
   task: TaskNode,
   approval: ApprovalNode,
   automated: AutomatedNode,
   end: EndNode,
+};
+
+const nodeColor = (node: any) => {
+  switch (node.type) {
+    case 'start': return '#10B981';
+    case 'task': return '#3B82F6';
+    case 'approval': return '#8B5CF6';
+    case 'automated': return '#E05C00';
+    case 'end': return '#EF4444';
+    default: return '#eee';
+  }
 };
 
 let id = 0;
@@ -41,6 +61,75 @@ const WorkflowDesigner = () => {
   const [log, setLog] = useState<any[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   const [showSandbox, setShowSandbox] = useState(false);
+
+  const loadTemplate = useCallback((type: string) => {
+    let templateNodes: any[] = [];
+    let templateEdges: any[] = [];
+    
+    if (type === 'onboarding') {
+      const s = getId();
+      const t = getId();
+      const a = getId();
+      const au = getId();
+      const e = getId();
+  
+      templateNodes = [
+        { id: s, type: 'start', position: { x: 100, y: 150 }, data: { title: 'Start' } },
+        { id: t, type: 'task', position: { x: 320, y: 150 }, data: { title: 'Collect Docs' } },
+        { id: a, type: 'approval', position: { x: 540, y: 150 }, data: { title: 'Manager Approval' } },
+        { id: au, type: 'automated', position: { x: 760, y: 150 }, data: { title: 'Send Email', action: 'send_email', action_params: {to: 'employee@company.com', subject: 'Welcome'} } },
+        { id: e, type: 'end', position: { x: 980, y: 150 }, data: { title: 'End' } }
+      ];
+      templateEdges = [
+        { id: `e-${s}-${t}`, source: s, target: t },
+        { id: `e-${t}-${a}`, source: t, target: a },
+        { id: `e-${a}-${au}`, source: a, target: au },
+        { id: `e-${au}-${e}`, source: au, target: e }
+      ];
+    } else if (type === 'leave') {
+      const s = getId();
+      const t = getId();
+      const a = getId();
+      const e = getId();
+      
+      templateNodes = [
+        { id: s, type: 'start', position: { x: 100, y: 150 }, data: { title: 'Start' } },
+        { id: t, type: 'task', position: { x: 320, y: 150 }, data: { title: 'Fill Form' } },
+        { id: a, type: 'approval', position: { x: 540, y: 150 }, data: { title: 'HRBP Approval' } },
+        { id: e, type: 'end', position: { x: 760, y: 150 }, data: { title: 'End' } }
+      ];
+      templateEdges = [
+        { id: `e-${s}-${t}`, source: s, target: t },
+        { id: `e-${t}-${a}`, source: t, target: a },
+        { id: `e-${a}-${e}`, source: a, target: e }
+      ];
+    } else if (type === 'docs') {
+      const s = getId();
+      const t = getId();
+      const au = getId();
+      const e = getId();
+  
+      templateNodes = [
+        { id: s, type: 'start', position: { x: 100, y: 150 }, data: { title: 'Start' } },
+        { id: t, type: 'task', position: { x: 320, y: 150 }, data: { title: 'Upload Docs' } },
+        { id: au, type: 'automated', position: { x: 540, y: 150 }, data: { title: 'Generate PDF', action: 'generate_doc', action_params: {template: 'Verification', recipient: 'Employee'} } },
+        { id: e, type: 'end', position: { x: 760, y: 150 }, data: { title: 'End' } }
+      ];
+      templateEdges = [
+        { id: `e-${s}-${t}`, source: s, target: t },
+        { id: `e-${t}-${au}`, source: t, target: au },
+        { id: `e-${au}-${e}`, source: au, target: e }
+      ];
+    }
+    
+    setNodes(templateNodes);
+    setEdges(templateEdges);
+    setTimeout(() => {
+        if(reactFlowInstance) {
+            reactFlowInstance.fitView({ padding: 0.2, duration: 800 });
+        }
+    }, 50);
+  }, [setNodes, setEdges, reactFlowInstance]);
 
   // Validation Logic
   const validationState = useMemo(() => {
@@ -209,6 +298,11 @@ const WorkflowDesigner = () => {
   }, [setNodes]);
 
   const handleRunSimulation = async () => {
+    if (validationState.totalErrors > 0) {
+      alert("Cannot run simulation: Workflow has validation errors. Please check the nodes and fix any issues first.");
+      return;
+    }
+
     setIsSimulating(true);
     setShowSandbox(true);
     setLog([]);
@@ -218,8 +312,19 @@ const WorkflowDesigner = () => {
     await new Promise(r => setTimeout(r, 600));
 
     const result = await simulateWorkflow(nodes, edges);
-    setLog(result.log);
-    setErrors(result.errors);
+    if (!result.success) {
+      setErrors(result.errors || []);
+      setIsSimulating(false);
+      return;
+    }
+
+    const fullLog = result.log || [];
+    // Animate rows appearing one by one with 200ms delay between each
+    for (let i = 0; i < fullLog.length; i++) {
+        await new Promise(r => setTimeout(r, 200));
+        setLog(prev => [...prev, fullLog[i]]);
+    }
+    
     setIsSimulating(false);
   };
 
@@ -308,7 +413,33 @@ const WorkflowDesigner = () => {
             >
               <Background color="#E5E7EB" gap={20} size={1} />
               <Controls />
+              <MiniMap 
+                nodeColor={nodeColor}
+                maskColor="rgba(0,0,0,0.08)"
+                style={{ border: '1px solid #eee', borderRadius: 8, bottom: 48, right: 16 }}
+              />
             </ReactFlow>
+
+            {nodes.length === 0 && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+                <div className="text-center pointer-events-auto bg-white/90 p-8 rounded-2xl backdrop-blur-sm border border-gray-100 shadow-[0_4px_24px_rgba(0,0,0,0.04)]">
+                  <div className="text-[64px] mb-[16px] leading-none">🎯</div>
+                  <h2 className="text-[18px] text-[#333] font-bold mb-[8px]">Start building your workflow</h2>
+                  <p className="text-[14px] text-[#888] mb-[24px]">Drag any node from the left sidebar to begin</p>
+                  <div className="flex gap-[12px] justify-center items-center">
+                    <button onClick={() => loadTemplate('onboarding')} className="px-[12px] py-[6px] border border-[#E5E7EB] rounded-full text-[12px] font-medium text-[#111827] hover:bg-[#F9FAFB] transition shadow-sm bg-white hover:border-[#E05C00] hover:text-[#E05C00]">
+                      + Onboarding Flow
+                    </button>
+                    <button onClick={() => loadTemplate('leave')} className="px-[12px] py-[6px] border border-[#E5E7EB] rounded-full text-[12px] font-medium text-[#111827] hover:bg-[#F9FAFB] transition shadow-sm bg-white hover:border-[#E05C00] hover:text-[#E05C00]">
+                      + Leave Approval
+                    </button>
+                    <button onClick={() => loadTemplate('docs')} className="px-[12px] py-[6px] border border-[#E5E7EB] rounded-full text-[12px] font-medium text-[#111827] hover:bg-[#F9FAFB] transition shadow-sm bg-white hover:border-[#E05C00] hover:text-[#E05C00]">
+                      + Doc Verification
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <ConfigPanel 
@@ -320,43 +451,79 @@ const WorkflowDesigner = () => {
         </div>
 
         {/* Simulation Bar */}
-        {showSandbox && (
-          <div className="h-[160px] border-t border-[#E5E7EB] bg-[#F9FAFB] py-[16px] px-[20px] overflow-y-auto shrink-0 z-20">
-            <div className="flex justify-between items-center mb-[12px]">
-              <div className="block text-[11px] font-semibold uppercase text-[#6B7280]">Simulation Log</div>
-              <button onClick={() => setShowSandbox(false)} className="text-[#6B7280] hover:text-[#111827] text-[11px] uppercase font-bold">
-                 Close
-              </button>
-            </div>
+        <div 
+          className={`absolute bottom-[32px] left-0 right-0 h-[320px] bg-white border-t border-[#E5E7EB] z-20 shadow-[0_-4px_15px_rgba(0,0,0,0.05)] flex flex-col transition-transform duration-200 ease-out ${
+            showSandbox ? 'translate-y-0' : 'translate-y-full'
+          }`}
+        >
+          {/* Header */}
+          <div className="flex justify-between items-center px-[20px] py-[16px] border-b border-[#E5E7EB] bg-[#F9FAFB] shrink-0">
+            <h3 className="text-[14px] font-bold text-[#111827]">Simulation Run — {new Date().toLocaleTimeString()}</h3>
+            <button onClick={() => setShowSandbox(false)} className="text-[#6B7280] hover:text-[#111827] text-[18px] font-bold leading-none">
+               &times;
+            </button>
+          </div>
 
-            {isSimulating ? (
-              <div className="text-[12px] text-[#6B7280] italic ml-[24px]">Running simulation...</div>
+          <div className="flex-1 overflow-y-auto px-[20px] py-[16px] bg-white">
+            {errors.length > 0 ? (
+              <div className="text-[#EF4444] text-[13px] font-medium">
+                {errors.map((err, i) => (
+                  <div key={i}>Error: {err}</div>
+                ))}
+              </div>
             ) : (
-              <div className="flex flex-col gap-[8px]">
-                {errors.length > 0 && (
-                  <div className="text-[#EF4444] text-[12px] font-medium ml-[24px]">
-                    {errors.map((err, i) => (
-                      <div key={i}>Action Required: {err}</div>
-                    ))}
-                  </div>
-                )}
-
+              <div className="flex flex-col gap-[12px]">
                 {log.map((entry, idx) => (
-                  <div key={idx} className="flex items-center gap-[10px] text-[12px]">
-                    <span className="text-[#10B981] font-bold">✓</span>
-                    <span>Step {entry.step}: <strong>{entry.label}</strong> — <span className="text-[#6B7280]">{entry.message}</span></span>
+                  <div key={idx} className="flex gap-[16px] animate-in slide-in-from-bottom-[10px] duration-300 fade-in fill-mode-forwards text-[13px]">
+                     <div className="w-[20px] text-center pt-1">
+                       {entry.status === 'success' ? <span className="text-[14px]">✅</span> : <span className="text-[14px]">⏳</span>}
+                     </div>
+                     <div className="flex-1 border-b border-[#E5E7EB] pb-[12px]">
+                       <div className="flex items-center justify-between mb-[4px]">
+                         <div className="flex items-center gap-[12px]">
+                           <span className="font-semibold text-[#6B7280]">Step {entry.step}</span>
+                           <span className="px-[8px] py-[2px] rounded-full text-[10px] font-bold text-white uppercase tracking-wider" style={{ backgroundColor: TYPE_COLORS[entry.nodeType] || '#CBD5E1' }}>
+                             {entry.nodeType}
+                           </span>
+                           <span className="font-medium text-[#111827]">{entry.label}</span>
+                         </div>
+                         <div className="text-[12px] text-[#6B7280] font-mono">
+                           {entry.duration ? `${entry.duration}ms` : 'pending'}
+                         </div>
+                       </div>
+                       <div className="text-[#6B7280] text-[12px]">{entry.message}</div>
+                     </div>
                   </div>
                 ))}
-
-                {log.length > 0 && errors.length === 0 && (
-                  <div className="text-[#6B7280] text-[12px] italic ml-[24px]">
-                    Simulation completed successfully.
-                  </div>
-                )}
               </div>
             )}
+
+            {!isSimulating && log.length > 0 && errors.length === 0 && (
+              <div className="mt-[20px]">
+                <div className="flex items-center justify-between bg-[#F8F9FA] p-[12px] rounded-[6px] border border-[#E5E7EB]">
+                  <div className="text-[12px] font-medium text-[#111827]">
+                    <span className="font-bold">{log.length} steps</span> | {log.filter(l => l.status === 'success').length} succeeded | {log.filter(l => l.status === 'pending').length} pending
+                  </div>
+                  <div className="text-[12px] font-bold text-[#111827]">
+                    Total: {log.reduce((acc, curr) => acc + (curr.duration || 0), 0)}ms
+                  </div>
+                </div>
+                <details className="mt-[16px] text-[12px] group">
+                  <summary className="cursor-pointer text-[#E05C00] font-medium select-none hover:underline">
+                    View Serialized Payload
+                  </summary>
+                  <pre className="mt-[8px] p-[12px] bg-[#111827] text-[#CBD5E1] rounded-[6px] overflow-x-auto overflow-y-auto max-h-[150px] font-mono text-[11px]">
+                    {JSON.stringify({ nodes, edges }, null, 2)}
+                  </pre>
+                </details>
+              </div>
+            )}
+            
+            {isSimulating && log.length === 0 && (
+              <div className="text-[13px] text-[#6B7280] italic px-[36px]">Preparing simulation...</div>
+            )}
           </div>
-        )}
+        </div>
 
         {/* Global Validation Status Bar */}
         <div className="h-[32px] w-full bg-[#f8f8f8] border-t border-[#eee] text-[12px] flex items-center px-4 shrink-0 justify-between">
