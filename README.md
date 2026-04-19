@@ -182,6 +182,7 @@ One-click pre-built workflows on the empty canvas:
 ## Architecture
 
 Ships as a **single self-contained HTML file** for portability, with logic cleanly separated by section comments:
+
 index.html
 │
 ├── 🎨 Styles .............. Minimalist CSS (#E05C00 orange, system-ui font)
@@ -216,6 +217,7 @@ index.html
 │   └── ConfigPanel ........ Right-side node editor (slides in on selection)
 │
 └── 🧪 SimulationPanel ..... Bottom drawer — animated timeline + validation log
+
 
 ### Design Decisions
 
