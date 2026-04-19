@@ -29,6 +29,10 @@ Built with **React + ReactFlow**, it runs entirely in the browser with no backen
 ---
 
 ## How to Run
+🚀 Quick Start
+"Ensure you have Node.js installed: https://nodejs.org/"
+Each step should have a bold heading and a bash code block.
+
 This project is built with React + Vite. Node.js must be installed.
 
 Show these exact steps:
@@ -46,11 +50,7 @@ Step 3 — Start the development server:
 Step 4 — Open in browser:
   Navigate to http://localhost:5173 
   (or the port shown in your terminal)
-
-Section title: 🚀 Quick Start
-Add a note before the steps: 
-  "Ensure you have Node.js installed: https://nodejs.org/"
-Each step should have a bold heading and a bash code block.
+🚀 Quick Start
 ---
 
 ## Features
