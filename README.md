@@ -29,26 +29,28 @@ Built with **React + ReactFlow**, it runs entirely in the browser with no backen
 ---
 
 ## How to Run
+This project is built with React + Vite. Node.js must be installed.
 
-### Option 1 — Direct Browser Open
-```bash
-# Just double-click index.html
-# Works in Chrome, Firefox, or Edge — no setup needed
-```
+Show these exact steps:
 
-### Option 2 — Local Server (Recommended)
-```bash
-# Using Node.js
-npx serve .
+Step 1 — Clone and navigate to the project:
+  git clone <your-repo-url>
+  cd hrflow-designer
 
-# Using Python
-python3 -m http.server 8080
+Step 2 — Install dependencies:
+  npm install
 
-# Then open: http://localhost:8080
-```
+Step 3 — Start the development server:
+  npm run dev
 
-> ✅ No `npm install`. No build step. No configuration. Just open and use.
+Step 4 — Open in browser:
+  Navigate to http://localhost:5173 
+  (or the port shown in your terminal)
 
+Section title: 🚀 Quick Start
+Add a note before the steps: 
+  "Ensure you have Node.js installed: https://nodejs.org/"
+Each step should have a bold heading and a bash code block.
 ---
 
 ## Features
