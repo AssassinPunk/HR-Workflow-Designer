@@ -10,6 +10,7 @@ import {
   Connection,
   Edge,
   MiniMap,
+  Panel,
   NodeTypes as RFNodeTypes,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -52,8 +53,8 @@ const getId = () => `dndnode_${id++}`;
 
 const WorkflowDesigner = () => {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [nodes, setNodes, rfOnNodesChange] = useNodesState([]);
+  const [edges, setEdges, rfOnEdgesChange] = useEdgesState([]);
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   
@@ -61,6 +62,205 @@ const WorkflowDesigner = () => {
   const [log, setLog] = useState<any[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   const [showSandbox, setShowSandbox] = useState(false);
+
+  // Context Menu & Toast State
+  const [contextMenu, setContextMenu] = useState<{ id: string, top: number, left: number } | null>(null);
+  const [toast, setToast] = useState<{ id: number, message: string, type: 'success' | 'error' | 'info' } | null>(null);
+
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    const toastId = Date.now();
+    setToast({ id: toastId, message, type });
+    setTimeout(() => {
+      setToast((prev) => (prev?.id === toastId ? null : prev));
+    }, 1500);
+  }, []);
+
+  // Undo/Redo State & Refs
+  const [history, setHistory] = useState<{nodes: any[], edges: any[]}[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const historyRef = useRef(history);
+  const historyIndexRef = useRef(historyIndex);
+  const isRestoring = useRef(false);
+  
+  const takeSnapshotRef = useRef(false);
+  const debounceTargetRef = useRef(false);
+  const debounceTimer = useRef<NodeJS.Timeout | null>(null);
+
+  const nodesRef = useRef(nodes);
+  const edgesRef = useRef(edges);
+  nodesRef.current = nodes;
+  edgesRef.current = edges;
+
+  const commitSnapshot = useCallback((currentNodes: any[], currentEdges: any[]) => {
+    const state = {
+      nodes: JSON.parse(JSON.stringify(currentNodes)),
+      edges: JSON.parse(JSON.stringify(currentEdges))
+    };
+    const prev = historyRef.current[historyIndexRef.current];
+    if (prev && JSON.stringify(prev) === JSON.stringify(state)) return;
+
+    setHistory((prevHist) => {
+      const newHist = prevHist.slice(0, historyIndexRef.current + 1);
+      newHist.push(state);
+      if (newHist.length > 51) newHist.shift(); // 50 snapshots + 1 origin
+      historyIndexRef.current = newHist.length - 1;
+      historyRef.current = newHist;
+      setHistoryIndex(newHist.length - 1);
+      return newHist;
+    });
+  }, []);
+
+  const requestSnapshot = useCallback((debounced = false) => {
+    if (debounced) {
+      debounceTargetRef.current = true;
+    } else {
+      takeSnapshotRef.current = true;
+    }
+  }, []);
+
+  useEffect(() => {
+    const initial = { nodes: [], edges: [] };
+    historyRef.current = [initial];
+    historyIndexRef.current = 0;
+    setHistory([initial]);
+    setHistoryIndex(0);
+  }, []);
+
+  useEffect(() => {
+    if (isRestoring.current) return;
+
+    if (takeSnapshotRef.current) {
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+      takeSnapshotRef.current = false;
+      debounceTargetRef.current = false;
+      commitSnapshot(nodes, edges);
+    } else if (debounceTargetRef.current) {
+      debounceTargetRef.current = false;
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+      debounceTimer.current = setTimeout(() => {
+        commitSnapshot(nodesRef.current, edgesRef.current);
+      }, 800);
+    }
+  });
+
+  const [flashUndo, setFlashUndo] = useState(false);
+  const [flashRedo, setFlashRedo] = useState(false);
+
+  const triggerButtonFlash = useCallback((type: 'undo' | 'redo') => {
+    if (type === 'undo') {
+      setFlashUndo(true);
+      setTimeout(() => setFlashUndo(false), 200);
+    } else {
+      setFlashRedo(true);
+      setTimeout(() => setFlashRedo(false), 200);
+    }
+  }, []);
+
+  const handleUndo = useCallback(() => {
+    if (debounceTimer.current) {
+      clearTimeout(debounceTimer.current);
+      commitSnapshot(nodesRef.current, edgesRef.current);
+      debounceTimer.current = null;
+      debounceTargetRef.current = false;
+      takeSnapshotRef.current = false;
+    }
+
+    if (historyIndexRef.current > 0) {
+      const newIdx = historyIndexRef.current - 1;
+      const snapshot = historyRef.current[newIdx];
+      isRestoring.current = true;
+      setNodes(snapshot.nodes);
+      setEdges(snapshot.edges);
+      historyIndexRef.current = newIdx;
+      setHistoryIndex(newIdx);
+      triggerButtonFlash('undo');
+      setTimeout(() => { isRestoring.current = false; }, 100);
+    }
+  }, [setNodes, setEdges, commitSnapshot, triggerButtonFlash]);
+
+  const handleRedo = useCallback(() => {
+    if (historyIndexRef.current < historyRef.current.length - 1) {
+      const newIdx = historyIndexRef.current + 1;
+      const snapshot = historyRef.current[newIdx];
+      isRestoring.current = true;
+      setNodes(snapshot.nodes);
+      setEdges(snapshot.edges);
+      historyIndexRef.current = newIdx;
+      setHistoryIndex(newIdx);
+      triggerButtonFlash('redo');
+      setTimeout(() => { isRestoring.current = false; }, 100);
+    }
+  }, [setNodes, setEdges, triggerButtonFlash]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return;
+
+      if (e.key === 'Escape' && contextMenu) {
+        setContextMenu(null);
+      } else {
+        const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+        const cmdKey = isMac ? e.metaKey : e.ctrlKey;
+        
+        if (cmdKey && e.key.toLowerCase() === 'z') {
+           if (!isSimulating && !showSandbox) {
+             if (e.shiftKey) {
+               e.preventDefault();
+               handleRedo();
+             } else {
+               e.preventDefault();
+               handleUndo();
+             }
+           }
+        } else if (cmdKey && e.key.toLowerCase() === 'y') {
+           if (!isSimulating && !showSandbox) {
+              e.preventDefault();
+              handleRedo();
+           }
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [contextMenu, isSimulating, showSandbox, handleUndo, handleRedo]);
+
+  const onNodesChangeApp = useCallback((changes: any) => {
+    rfOnNodesChange(changes);
+    if (changes.some((c: any) => c.type === 'remove' || (c.type === 'position' && c.dragging === false))) {
+      requestSnapshot(false);
+    }
+  }, [rfOnNodesChange, requestSnapshot]);
+
+  const onEdgesChangeApp = useCallback((changes: any) => {
+    rfOnEdgesChange(changes);
+    if (changes.some((c: any) => c.type === 'remove' || c.type === 'add')) {
+      requestSnapshot(false);
+    }
+  }, [rfOnEdgesChange, requestSnapshot]);
+
+  const onConnectApp = useCallback(
+    (params: Edge | Connection) => {
+      setEdges((eds) => addEdge(params, eds));
+      requestSnapshot(false);
+    },
+    [setEdges, requestSnapshot],
+  );
+
+  const onNodeContextMenu = useCallback(
+    (event: React.MouseEvent, node: any) => {
+      event.preventDefault();
+      setContextMenu({
+        id: node.id,
+        top: event.clientY,
+        left: event.clientX,
+      });
+    },
+    []
+  );
+
+  const onPaneClick = useCallback(() => {
+    if (contextMenu) setContextMenu(null);
+  }, [contextMenu]);
 
   const loadTemplate = useCallback((type: string) => {
     let templateNodes: any[] = [];
@@ -124,12 +324,13 @@ const WorkflowDesigner = () => {
     
     setNodes(templateNodes);
     setEdges(templateEdges);
+    requestSnapshot(false);
     setTimeout(() => {
         if(reactFlowInstance) {
             reactFlowInstance.fitView({ padding: 0.2, duration: 800 });
         }
     }, 50);
-  }, [setNodes, setEdges, reactFlowInstance]);
+  }, [setNodes, setEdges, reactFlowInstance, requestSnapshot]);
 
   // Validation Logic
   const validationState = useMemo(() => {
@@ -274,8 +475,9 @@ const WorkflowDesigner = () => {
       };
 
       setNodes((nds) => nds.concat(newNode));
+      requestSnapshot(false);
     },
-    [reactFlowInstance, setNodes],
+    [reactFlowInstance, setNodes, requestSnapshot],
   );
 
   const onSelectionChange = useCallback(({ nodes }: any) => {
@@ -295,7 +497,143 @@ const WorkflowDesigner = () => {
         return node;
       })
     );
-  }, [setNodes]);
+    requestSnapshot(true);
+  }, [setNodes, requestSnapshot]);
+
+  const handleAutoLayout = useCallback(() => {
+    if (nodes.length <= 1 || edges.length === 0) {
+      if (reactFlowInstance) reactFlowInstance.fitView({ padding: 0.2, duration: 800 });
+      showToast("Nothing to layout — add more nodes.", "info");
+      return;
+    }
+    
+    const adj = new Map<string, string[]>();
+    const inDegree = new Map<string, number>();
+    nodes.forEach(n => {
+      adj.set(n.id, []);
+      inDegree.set(n.id, 0);
+    });
+    
+    edges.forEach(e => {
+      if (adj.has(e.source)) {
+        adj.get(e.source)!.push(e.target);
+      }
+      if (inDegree.has(e.target)) {
+        inDegree.set(e.target, inDegree.get(e.target)! + 1);
+      }
+    });
+    
+    const unconnected: string[] = [];
+    nodes.forEach(n => {
+      if ((inDegree.get(n.id) || 0) === 0 && (adj.get(n.id) || []).length === 0) {
+        unconnected.push(n.id);
+      }
+    });
+    
+    const depths = new Map<string, number>();
+    let queue: string[] = [];
+    
+    nodes.forEach(n => {
+      if (n.type === 'start') {
+        queue.push(n.id);
+        depths.set(n.id, 0);
+      } else if ((inDegree.get(n.id) || 0) === 0 && !unconnected.includes(n.id)) {
+        queue.push(n.id);
+        depths.set(n.id, 0);
+      }
+    });
+    
+    if (queue.length === 0 && nodes.length > unconnected.length) {
+      const firstConnected = nodes.find(n => !unconnected.includes(n.id))?.id;
+      if (firstConnected) {
+        queue.push(firstConnected);
+        depths.set(firstConnected, 0);
+      }
+    }
+    
+    const maxNodesDepth = nodes.length + 1;
+    let q = [...queue];
+    while (q.length > 0) {
+      const u = q.shift()!;
+      const currentDepth = depths.get(u) || 0;
+      const neighbors = adj.get(u) || [];
+      
+      for (const v of neighbors) {
+        const targetNode = nodes.find(n => n.id === v);
+        if (targetNode?.type === 'start') continue; // Do not push back the start node
+        
+        const vDepth = depths.get(v) || 0;
+        if (currentDepth + 1 > vDepth) {
+          depths.set(v, currentDepth + 1);
+          if (currentDepth + 1 <= maxNodesDepth) {
+            q.push(v);
+          }
+        }
+      }
+    }
+    
+    const columns = new Map<number, string[]>();
+    let maxRows = 0;
+    nodes.forEach(n => {
+      if (!unconnected.includes(n.id)) {
+        const d = depths.get(n.id) || 0;
+        if (!columns.has(d)) columns.set(d, []);
+        columns.get(d)!.push(n.id);
+      }
+    });
+    
+    columns.forEach(col => {
+      if (col.length > maxRows) maxRows = col.length;
+    });
+    
+    const newNodes = nodes.map(node => {
+      let x = 0;
+      let y = 0;
+      
+      if (unconnected.includes(node.id)) {
+         const idx = unconnected.indexOf(node.id);
+         x = idx * 240 + 80;
+         y = (maxRows + 1) * 140 + 80;
+      } else {
+         const d = depths.get(node.id) || 0;
+         const colArray = columns.get(d) || [];
+         const rIndex = colArray.indexOf(node.id);
+         const colSize = colArray.length;
+         
+         x = d * 240 + 80;
+         const offsetY = ((maxRows - colSize) * 140) / 2;
+         y = rIndex * 140 + 80 + offsetY;
+      }
+      
+      return {
+         ...node,
+         position: { x, y },
+         style: { ...node.style, transition: 'transform 0.4s ease-out' }
+      };
+    });
+    
+    setNodes(newNodes);
+    requestSnapshot(false);
+    showToast('✅ Layout applied', 'success');
+    
+    setTimeout(() => {
+      if (reactFlowInstance) {
+        reactFlowInstance.fitView({ padding: 0.2, duration: 800 });
+      }
+      
+      // Remove animation property safely so normal dragging works again
+      setTimeout(() => {
+        setNodes(nds => nds.map(n => {
+          if (n.style && (n.style as any).transition) {
+             const { transition, ...restStyle } = n.style as any;
+             return { ...n, style: restStyle };
+          }
+          return n;
+        }));
+      }, 500);
+    }, 50);
+    
+  }, [nodes, edges, reactFlowInstance, setNodes, requestSnapshot, showToast]);
 
   const handleRunSimulation = async () => {
     if (validationState.totalErrors > 0) {
@@ -339,8 +677,41 @@ const WorkflowDesigner = () => {
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg> 
             HRFlow Designer
           </div>
-          <div className="flex gap-[12px] items-center">
-             <label className="cursor-pointer bg-white border border-[#E5E7EB] px-[12px] py-[6px] text-[12px] rounded-[4px] text-[#111827] hover:bg-[#F9FAFB] transition">
+          
+          <div className="flex items-center gap-[40px]">
+            {/* Undo / Redo */}
+            <div className="flex flex-col items-center">
+              <div className="flex items-center gap-[8px]">
+                <button 
+                  onClick={handleUndo}
+                  disabled={historyIndex <= 0}
+                  title="Undo (Ctrl+Z)"
+                  className={`bg-white border px-[12px] py-[6px] text-[12px] rounded-[4px] text-[#111827] transition flex items-center gap-[4px] shadow-sm
+                    ${historyIndex <= 0 ? 'opacity-40 cursor-not-allowed border-[#E5E7EB]' : 'hover:bg-[#F9FAFB] border-[#E5E7EB] hover:border-[#D1D5DB]'}
+                    ${flashUndo ? 'border-[#E05C00] shadow-[0_0_0_1px_#E05C00] z-10' : ''}`}
+                >
+                  <span className="text-[14px]">↩</span> Undo
+                </button>
+                <button 
+                  onClick={handleRedo}
+                  disabled={historyIndex >= history.length - 1}
+                  title="Redo (Ctrl+Y)"
+                  className={`bg-white border px-[12px] py-[6px] text-[12px] rounded-[4px] text-[#111827] transition flex items-center gap-[4px] shadow-sm
+                    ${historyIndex >= history.length - 1 ? 'opacity-40 cursor-not-allowed border-[#E5E7EB]' : 'hover:bg-[#F9FAFB] border-[#E5E7EB] hover:border-[#D1D5DB]'}
+                    ${flashRedo ? 'border-[#E05C00] shadow-[0_0_0_1px_#E05C00] z-10' : ''}`}
+                >
+                  <span className="text-[14px]">↪</span> Redo
+                </button>
+              </div>
+              {history.length > 0 && (
+                <div className="text-[11px] text-[#9CA3AF] mt-[2px] font-mono tracking-tighter w-full text-center select-none">
+                  History: {historyIndex}/{Math.max(0, history.length - 1)}
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-[12px] items-center">
+               <label className="cursor-pointer bg-white border border-[#E5E7EB] px-[12px] py-[6px] text-[12px] rounded-[4px] text-[#111827] hover:bg-[#F9FAFB] transition">
                Import JSON
                <input 
                  type="file" 
@@ -386,25 +757,28 @@ const WorkflowDesigner = () => {
              >
                Run Simulation
              </button>
+            </div>
           </div>
         </header>
 
         {/* Main Content Workspace */}
         <div className="flex flex-1 overflow-hidden relative">
-          <Sidebar />
+          <Sidebar nodes={nodes} edges={edges} validationState={validationState} />
           
           <div className="flex-1 relative bg-[#F8F9FA]" ref={reactFlowWrapper}>
             <ReactFlow
               nodes={nodes}
               edges={edges}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onConnect={onConnect}
+              onNodesChange={onNodesChangeApp}
+              onEdgesChange={onEdgesChangeApp}
+              onConnect={onConnectApp}
               isValidConnection={isValidConnection}
               onInit={setReactFlowInstance}
               onDrop={onDrop}
               onDragOver={onDragOver}
               onSelectionChange={onSelectionChange}
+              onNodeContextMenu={onNodeContextMenu}
+              onPaneClick={onPaneClick}
               nodeTypes={nodeTypes}
               defaultEdgeOptions={{ style: { stroke: '#CBD5E1', strokeWidth: 2 } }}
               fitView
@@ -413,12 +787,91 @@ const WorkflowDesigner = () => {
             >
               <Background color="#E5E7EB" gap={20} size={1} />
               <Controls />
+              <Panel position="bottom-left" style={{ marginLeft: 40, marginBottom: 0 }}>
+                <button
+                  onClick={handleAutoLayout}
+                  className="bg-white text-[#E05C00] border border-[#E05C00] rounded-[6px] h-[28px] w-[100px] text-[12px] font-semibold hover:bg-[#fff5f0] transition-colors shadow-sm flex items-center justify-center"
+                >
+                  ⚡ Auto Layout
+                </button>
+              </Panel>
               <MiniMap 
                 nodeColor={nodeColor}
                 maskColor="rgba(0,0,0,0.08)"
                 style={{ border: '1px solid #eee', borderRadius: 8, bottom: 48, right: 16 }}
               />
             </ReactFlow>
+
+            {/* Context Menu Overlay */}
+            {contextMenu && (
+              <div 
+                className="fixed z-50 bg-white rounded-[8px] shadow-[0_4px_16px_rgba(0,0,0,0.12)] border border-[#E5E7EB] w-[180px] overflow-hidden flex flex-col font-sans"
+                style={{ top: contextMenu.top, left: contextMenu.left }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button 
+                  className="w-full text-left px-[12px] h-[32px] text-[13px] text-[#111827] hover:bg-[#fff5f0] hover:text-[#E05C00] transition-colors flex items-center gap-[8px]"
+                  onClick={() => {
+                    setSelectedNodeId(contextMenu.id);
+                    setContextMenu(null);
+                  }}
+                >
+                  <span className="w-[16px] text-center">✏️</span> Edit Node
+                </button>
+                <button 
+                  className="w-full text-left px-[12px] h-[32px] text-[13px] text-[#111827] hover:bg-[#fff5f0] hover:text-[#E05C00] transition-colors flex items-center gap-[8px]"
+                  onClick={() => {
+                    const node = nodes.find(n => n.id === contextMenu.id);
+                    if (node) {
+                      const newNode = {
+                        ...node,
+                        id: getId(),
+                        selected: false,
+                        position: { x: node.position.x + 40, y: node.position.y + 40 },
+                        data: { ...node.data }
+                      };
+                      setNodes((nds) => nds.concat(newNode));
+                      requestSnapshot(false);
+                    }
+                    setContextMenu(null);
+                  }}
+                >
+                  <span className="w-[16px] text-center">📋</span> Duplicate Node
+                </button>
+                <button 
+                  className="w-full text-left px-[12px] h-[32px] text-[13px] text-[#111827] hover:bg-[#fff5f0] hover:text-[#E05C00] transition-colors flex items-center gap-[8px]"
+                  onClick={() => {
+                    navigator.clipboard.writeText(contextMenu.id);
+                    showToast('Copied!', 'success');
+                    setContextMenu(null);
+                  }}
+                >
+                  <span className="w-[16px] text-center">🔗</span> Copy Node ID
+                </button>
+                <div className="h-[1px] bg-[#E5E7EB] my-[4px]" />
+                <button 
+                  className="w-full text-left px-[12px] h-[32px] text-[13px] text-[#EF4444] hover:bg-[#fff5f0] transition-colors flex items-center gap-[8px]"
+                  onClick={() => {
+                    const nodeEdges = edges.filter(e => e.source === contextMenu.id || e.target === contextMenu.id);
+                    if (nodeEdges.length > 2) {
+                      if (!window.confirm(`This node has ${nodeEdges.length} connected edges. Are you sure you want to delete it?`)) {
+                        setContextMenu(null);
+                        return;
+                      }
+                    }
+                    setNodes((nds) => nds.filter(n => n.id !== contextMenu.id));
+                    setEdges((eds) => eds.filter(e => e.source !== contextMenu.id && e.target !== contextMenu.id));
+                    requestSnapshot(false);
+                    if (selectedNodeId === contextMenu.id) {
+                       setSelectedNodeId(null);
+                    }
+                    setContextMenu(null);
+                  }}
+                >
+                  <span className="w-[16px] text-center">🗑️</span> Delete Node
+                </button>
+              </div>
+            )}
 
             {nodes.length === 0 && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
@@ -548,6 +1001,17 @@ const WorkflowDesigner = () => {
             )}
           </div>
         </div>
+
+        {/* Global Toast Notification */}
+        {toast && (
+          <div className="fixed bottom-[48px] left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-bottom-[20px] fade-in duration-200">
+            <div className={`bg-[#222] text-white px-[16px] py-[10px] text-[13px] rounded-[6px] shadow-lg border-l-[4px]
+              ${toast.type === 'success' ? 'border-[#10B981]' : toast.type === 'error' ? 'border-[#EF4444]' : 'border-[#E05C00]'}`}
+            >
+              {toast.message}
+            </div>
+          </div>
+        )}
       </div>
     </ValidationContext.Provider>
   );
