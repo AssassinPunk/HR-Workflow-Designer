@@ -185,12 +185,10 @@ export const ConfigPanel = ({ selectedNode, updateNodeData, deleteNode, onClose 
 
   return (
     <aside 
-      className={`right-0 h-full bg-white border-l border-[#E5E7EB] z-10 flex flex-col w-[280px] shrink-0
-        transition-all duration-200 ease-out absolute lg:relative shadow-[-4px_0_15px_rgba(0,0,0,0.05)] lg:shadow-none
-        ${selectedNode ? 'translate-x-0' : 'translate-x-[280px] lg:translate-x-0'}`}
+      className="right-0 h-full bg-white border-l border-[#E5E7EB] z-10 flex flex-col w-[280px] shrink-0 relative overflow-hidden"
     >
       {selectedNode ? (
-        <div className="flex flex-col h-full opacity-100 transition-opacity duration-200 delay-100">
+        <div className="flex flex-col h-full absolute inset-0 animate-in slide-in-from-right-8 fade-in duration-300 bg-white">
           {/* Header */}
           <div className="flex items-center justify-between p-[20px] border-b border-[#E5E7EB] shrink-0">
             <div className="flex items-center gap-[8px]">
@@ -199,7 +197,7 @@ export const ConfigPanel = ({ selectedNode, updateNodeData, deleteNode, onClose 
                 {selectedNode.type.charAt(0).toUpperCase() + selectedNode.type.slice(1)}
               </span>
             </div>
-            <button onClick={onClose} className="text-[#6B7280] hover:text-[#111827] flex items-center justify-center w-[24px] h-[24px] text-[16px] font-bold">
+            <button onClick={onClose} className="text-[#6B7280] hover:text-[#111827] flex items-center justify-center w-[24px] h-[24px] text-[16px] font-bold z-10 bg-white rounded-full">
               &times;
             </button>
           </div>
@@ -210,7 +208,7 @@ export const ConfigPanel = ({ selectedNode, updateNodeData, deleteNode, onClose 
           </div>
 
           {/* Footer */}
-          <div className="p-[20px] border-t border-[#E5E7EB] shrink-0 bg-white">
+          <div className="p-[20px] border-t border-[#E5E7EB] shrink-0 bg-white shadow-[0_-4px_10px_rgba(0,0,0,0.02)]">
             <button 
               onClick={handleSave}
               className={`w-full py-[10px] text-[13px] rounded-[6px] font-semibold transition-colors duration-200 ${
@@ -233,8 +231,10 @@ export const ConfigPanel = ({ selectedNode, updateNodeData, deleteNode, onClose 
           </div>
         </div>
       ) : (
-        <div className="p-[20px] text-center text-[#6B7280] text-[13px] flex-1 flex items-center justify-center opacity-100 transition-opacity duration-200 delay-100 hidden lg:flex">
-          No node selected
+        <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-300">
+           <div className="text-[32px] mb-4">🖱️</div>
+           <div className="text-[14px] font-bold text-[#666] mb-2">Select a node to edit</div>
+           <div className="text-[12px] text-[#999]">Click any node on the canvas</div>
         </div>
       )}
     </aside>

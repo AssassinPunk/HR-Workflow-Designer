@@ -96,13 +96,13 @@ const WorkflowDesigner = () => {
       nodes: JSON.parse(JSON.stringify(currentNodes)),
       edges: JSON.parse(JSON.stringify(currentEdges))
     };
-    const prev = historyRef.current[historyIndexRef.current];
+    const prev = historyIndexRef.current >= 0 ? historyRef.current[historyIndexRef.current] : null;
     if (prev && JSON.stringify(prev) === JSON.stringify(state)) return;
 
     setHistory((prevHist) => {
-      const newHist = prevHist.slice(0, historyIndexRef.current + 1);
+      const newHist = historyIndexRef.current >= 0 ? prevHist.slice(0, historyIndexRef.current + 1) : [];
       newHist.push(state);
-      if (newHist.length > 51) newHist.shift(); // 50 snapshots + 1 origin
+      if (newHist.length > 50) newHist.shift(); // 50 snapshots
       historyIndexRef.current = newHist.length - 1;
       historyRef.current = newHist;
       setHistoryIndex(newHist.length - 1);
@@ -116,14 +116,6 @@ const WorkflowDesigner = () => {
     } else {
       takeSnapshotRef.current = true;
     }
-  }, []);
-
-  useEffect(() => {
-    const initial = { nodes: [], edges: [] };
-    historyRef.current = [initial];
-    historyIndexRef.current = 0;
-    setHistory([initial]);
-    setHistoryIndex(0);
   }, []);
 
   useEffect(() => {
@@ -672,7 +664,7 @@ const WorkflowDesigner = () => {
     <ValidationContext.Provider value={{ nodeErrors: validationState.nodeErrors }}>
       <div className="flex flex-col h-screen w-full bg-white font-sans text-gray-900 overflow-hidden">
         {/* Header */}
-        <header className="h-[56px] border-b border-[#E5E7EB] flex items-center justify-between px-[20px] shrink-0">
+        <header className="h-[56px] border-b border-[#E5E7EB] flex items-center justify-between px-[20px] shrink-0 bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] relative z-30">
           <div className="flex items-center gap-[8px] font-bold text-[#E05C00]">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg> 
             HRFlow Designer
@@ -703,9 +695,13 @@ const WorkflowDesigner = () => {
                   <span className="text-[14px]">↪</span> Redo
                 </button>
               </div>
-              {history.length > 0 && (
+              {history.length > 0 ? (
                 <div className="text-[11px] text-[#9CA3AF] mt-[2px] font-mono tracking-tighter w-full text-center select-none">
-                  History: {historyIndex}/{Math.max(0, history.length - 1)}
+                  History: {historyIndex + 1}/{history.length}
+                </div>
+              ) : (
+                <div className="text-[11px] text-[#9CA3AF] mt-[2px] font-mono tracking-tighter w-full text-center select-none">
+                  History: —
                 </div>
               )}
             </div>
@@ -765,7 +761,7 @@ const WorkflowDesigner = () => {
         <div className="flex flex-1 overflow-hidden relative">
           <Sidebar nodes={nodes} edges={edges} validationState={validationState} />
           
-          <div className="flex-1 relative bg-[#F8F9FA]" ref={reactFlowWrapper}>
+          <div className="flex-1 relative bg-[#FAFAFA]" ref={reactFlowWrapper}>
             <ReactFlow
               nodes={nodes}
               edges={edges}
@@ -785,7 +781,7 @@ const WorkflowDesigner = () => {
               deleteKeyCode={['Backspace', 'Delete']}
               className="react-flow-wrapper"
             >
-              <Background color="#E5E7EB" gap={20} size={1} />
+              <Background color="#D1D5DB" gap={20} size={1.5} />
               <Controls />
               <Panel position="bottom-left" style={{ marginLeft: 40, marginBottom: 0 }}>
                 <button
@@ -796,9 +792,18 @@ const WorkflowDesigner = () => {
                 </button>
               </Panel>
               <MiniMap 
-                nodeColor={nodeColor}
-                maskColor="rgba(0,0,0,0.08)"
-                style={{ border: '1px solid #eee', borderRadius: 8, bottom: 48, right: 16 }}
+                nodeColor={(node) => {
+                  const colors = {
+                    start: '#22c55e',
+                    task: '#3b82f6', 
+                    approval: '#a855f7',
+                    automated: '#f97316',
+                    end: '#ef4444'
+                  };
+                  return (colors as any)[node.type!] || '#999';
+                }}
+                maskColor="rgba(0,0,0,0.06)"
+                style={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: 8, bottom: 48, right: 16 }}
               />
             </ReactFlow>
 
@@ -880,13 +885,13 @@ const WorkflowDesigner = () => {
                   <h2 className="text-[18px] text-[#333] font-bold mb-[8px]">Start building your workflow</h2>
                   <p className="text-[14px] text-[#888] mb-[24px]">Drag any node from the left sidebar to begin</p>
                   <div className="flex gap-[12px] justify-center items-center">
-                    <button onClick={() => loadTemplate('onboarding')} className="px-[12px] py-[6px] border border-[#E5E7EB] rounded-full text-[12px] font-medium text-[#111827] hover:bg-[#F9FAFB] transition shadow-sm bg-white hover:border-[#E05C00] hover:text-[#E05C00]">
+                    <button onClick={() => loadTemplate('onboarding')} className="px-[16px] py-[6px] rounded-full text-[12px] font-medium text-[#E05C00] transition-[background-color,color] duration-150 ease bg-white border-[1.5px] border-[#E05C00] hover:bg-[#E05C00] hover:text-white">
                       + Onboarding Flow
                     </button>
-                    <button onClick={() => loadTemplate('leave')} className="px-[12px] py-[6px] border border-[#E5E7EB] rounded-full text-[12px] font-medium text-[#111827] hover:bg-[#F9FAFB] transition shadow-sm bg-white hover:border-[#E05C00] hover:text-[#E05C00]">
+                    <button onClick={() => loadTemplate('leave')} className="px-[16px] py-[6px] rounded-full text-[12px] font-medium text-[#E05C00] transition-[background-color,color] duration-150 ease bg-white border-[1.5px] border-[#E05C00] hover:bg-[#E05C00] hover:text-white">
                       + Leave Approval
                     </button>
-                    <button onClick={() => loadTemplate('docs')} className="px-[12px] py-[6px] border border-[#E5E7EB] rounded-full text-[12px] font-medium text-[#111827] hover:bg-[#F9FAFB] transition shadow-sm bg-white hover:border-[#E05C00] hover:text-[#E05C00]">
+                    <button onClick={() => loadTemplate('docs')} className="px-[16px] py-[6px] rounded-full text-[12px] font-medium text-[#E05C00] transition-[background-color,color] duration-150 ease bg-white border-[1.5px] border-[#E05C00] hover:bg-[#E05C00] hover:text-white">
                       + Doc Verification
                     </button>
                   </div>
@@ -905,14 +910,21 @@ const WorkflowDesigner = () => {
 
         {/* Simulation Bar */}
         <div 
-          className={`absolute bottom-[32px] left-0 right-0 h-[320px] bg-white border-t border-[#E5E7EB] z-20 shadow-[0_-4px_15px_rgba(0,0,0,0.05)] flex flex-col transition-transform duration-200 ease-out ${
-            showSandbox ? 'translate-y-0' : 'translate-y-full'
+          className={`absolute bottom-[32px] left-0 right-0 bg-white border-t border-[#E5E7EB] z-20 flex flex-col transition-all duration-[250ms] ease-out overflow-hidden ${
+            showSandbox ? 'h-[320px] opacity-100 pointer-events-auto shadow-[0_-4px_15px_rgba(0,0,0,0.05)]' : 'h-0 opacity-0 pointer-events-none border-t-transparent shadow-none'
           }`}
         >
           {/* Header */}
           <div className="flex justify-between items-center px-[20px] py-[16px] border-b border-[#E5E7EB] bg-[#F9FAFB] shrink-0">
-            <h3 className="text-[14px] font-bold text-[#111827]">Simulation Run — {new Date().toLocaleTimeString()}</h3>
-            <button onClick={() => setShowSandbox(false)} className="text-[#6B7280] hover:text-[#111827] text-[18px] font-bold leading-none">
+            <h3 className="text-[14px] font-bold text-[#111827]">
+              Simulation Run — {new Date().toLocaleTimeString()}
+              {!isSimulating && log.length > 0 && errors.length === 0 && (
+                <span className="font-normal text-[#6B7280]">
+                  &nbsp;&nbsp;|&nbsp;&nbsp;✅ {log.length} steps&nbsp;&nbsp;|&nbsp;&nbsp;{log.reduce((acc, curr) => acc + (curr.duration || 0), 0)}ms total
+                </span>
+              )}
+            </h3>
+            <button onClick={() => setShowSandbox(false)} className="text-[#6B7280] hover:text-[#111827] text-[20px] font-bold leading-none w-[28px] h-[28px] flex items-center justify-center rounded-full hover:bg-[#E5E7EB] transition-colors">
                &times;
             </button>
           </div>
@@ -979,18 +991,17 @@ const WorkflowDesigner = () => {
         </div>
 
         {/* Global Validation Status Bar */}
-        <div className="h-[32px] w-full bg-[#f8f8f8] border-t border-[#eee] text-[12px] flex items-center px-4 shrink-0 justify-between">
-          <div className="flex items-center gap-4 text-gray-700">
+        <div className="h-[32px] w-full bg-[#FAFAFA] border-t border-[#E5E7EB] text-[12px] flex items-center px-4 shrink-0 justify-between">
+          <div className="flex items-center gap-4 text-gray-500">
             <span>Nodes: {nodes.length}</span>
-            <span className="text-gray-300">|</span>
+            <span className="text-[#D1D5DB]">|</span>
             <span>Edges: {edges.length}</span>
-            <span className="text-gray-300">|</span>
+            <span className="text-[#D1D5DB]">|</span>
             {validationState.totalErrors === 0 ? (
-              <span className="text-green-600 font-medium whitespace-nowrap">✅ Valid workflow</span>
+              <span className="text-[#10B981] font-medium whitespace-nowrap">✅ Valid workflow</span>
             ) : (
-              <span className="text-red-500 font-medium whitespace-nowrap flex items-center gap-1 group relative cursor-help">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                {validationState.totalErrors} validation error{validationState.totalErrors !== 1 ? 's' : ''}
+              <span className="text-[#E05C00] font-medium whitespace-nowrap flex items-center gap-1 group relative cursor-help">
+                ⚠️ Invalid workflow
                 
                 {validationState.globalErrors.length > 0 && (
                   <div className="hidden group-hover:block absolute bottom-full mb-2 left-0 w-max max-w-[300px] bg-gray-800 text-white text-[11px] p-2 rounded shadow-lg whitespace-pre-wrap text-left z-50">

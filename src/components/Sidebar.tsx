@@ -89,13 +89,13 @@ export const Sidebar = ({ nodes = [], edges = [], validationState = { totalError
             return (
               <div
                 key={node.type}
-                className={`p-[10px] border border-[#E5E7EB] rounded-[6px] cursor-grab bg-white flex items-center justify-between hover:border-[#D1D5DB] transition-all hover:shadow-sm ${isDragging ? 'opacity-50' : 'opacity-100'}`}
+                className={`group p-[10px] border border-[#E5E7EB] rounded-[6px] cursor-grab bg-white flex items-center justify-between hover:bg-[#fff5f0] hover:border-[#E05C00] transition-all duration-[150ms] ease ${isDragging ? 'opacity-50' : 'opacity-100'}`}
                 onDragStart={(event) => onDragStart(event, node.type, node.color)}
                 onDragEnd={onDragEnd}
                 draggable
               >
                 <div className="flex items-center gap-[8px] text-[13px] font-medium text-[#111827]">
-                  <div className={`w-[8px] h-[8px] rounded-full ${node.color}`}></div>
+                  <div className={`w-[8px] h-[8px] rounded-full scale-100 group-hover:scale-[1.3] transition-transform duration-[150ms] ease ${node.color}`}></div>
                   <span>{node.label}</span>
                 </div>
                 <div 
