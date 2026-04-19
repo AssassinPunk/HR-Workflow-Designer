@@ -35,8 +35,6 @@ Each step should have a bold heading and a bash code block.
 
 This project is built with React + Vite. Node.js must be installed.
 
-Show these exact steps:
-
 Step 1 — Clone and navigate to the project:
   git clone <your-repo-url>
   cd hrflow-designer
@@ -50,7 +48,7 @@ Step 3 — Start the development server:
 Step 4 — Open in browser:
   Navigate to http://localhost:5173 
   (or the port shown in your terminal)
-🚀 Quick Start
+
 ---
 
 ## Features
